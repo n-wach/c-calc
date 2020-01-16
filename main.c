@@ -5,9 +5,12 @@
 #include <stdio.h>
 
 #include "token.c"
+#include "error.c"
 
-int parse_to_stack(TokenStack *stack, char *exp) {
+
+Result parse_to_stack(TokenStack *stack, char *exp) {
     //return 1 if valid input, 0 if not
+    Result result = {NONE};
     bool should_neg_mean_num = true;
     int paren_depth = 0;
     for(int i = 0; ; i++) {
@@ -30,26 +33,32 @@ int parse_to_stack(TokenStack *stack, char *exp) {
             should_neg_mean_num = true;
         } else if(c == R_P) {
             paren_depth--;
-            if(paren_depth < 0) return 0;
+            if(paren_depth < 0) {
+                result.error = EXTRA_R_P;
+                return result;
+            }
             push_operator(stack, c);
             should_neg_mean_num = false;
         } else if(c == ' ') {
             //skip
         } else {
             // characters can only be operators, numbers or spaces
-            return 0;
+            result.error = INVALID_CHAR;
+            result.value = c;
+            return result;
         }
     }
     if(paren_depth > 0) {
-        return 0;
+        result.error = EXTRA_L_P;
+        return result;
     }
     reverse(stack);
-    return 1;
+    return result;
 }
 
-int eval_postfix(TokenStack *stack) {
-    //stack should be of postfix form:
-    //Top = 1 -> 5 -> 8 -> + -> + = 1 5 8 + + = 1 + 5 + 8
+Result eval_postfix(TokenStack *stack) {
+    Result result = {NONE};
+
     TokenStack temp = {NULL};
     TokenNode *v1 = NULL;
     TokenNode *v2 = NULL;
@@ -59,9 +68,17 @@ int eval_postfix(TokenStack *stack) {
             push_node(&temp, n);
         } else {
             v1 = pop(&temp);
-            if(v1 == NULL || v1->type != VALUE) return 0;
+            if(v1 == NULL || v1->type != VALUE) {
+                result.error = MISSING_VALUE;
+                result.value = n->value;
+                return result;
+            }
             v2 = pop(&temp);
-            if(v2 == NULL || v2->type != VALUE) return 0;
+            if(v2 == NULL || v2->type != VALUE) {
+                result.error = MISSING_VALUE;
+                result.value = n->value;
+                return result;
+            }
             switch(n->value) {
                 case ADD:
                     push_value(&temp, v2->value + v1->value);
@@ -73,7 +90,10 @@ int eval_postfix(TokenStack *stack) {
                     push_value(&temp, v2->value * v1->value);
                     break;
                 case DIV:
-                    if(v1->value == 0) return 0;
+                    if(v1->value == 0) {
+                        result.error = DIVIDE_BY_ZERO;
+                        return result;
+                    }
                     push_value(&temp, v2->value / v1->value);
                     break;
             }
@@ -82,7 +102,25 @@ int eval_postfix(TokenStack *stack) {
             free(n);
         }
     }
-    return temp.top->value;
+    if(temp.top == NULL) {
+        result.error = EMPTY_EXPRESSION;
+        return result;
+    } else {
+        TokenNode *r = pop(&temp);
+        result.value = r->value;
+        free(r);
+    }
+    if(temp.top != NULL) {
+        TokenNode *n;
+        result.error = EXTRA_VALUE;
+        while(temp.top != NULL) {
+            n = pop(&temp);
+            result.value = n->value;
+            free(n);
+        }
+        return result;
+    }
+    return result;
 }
 
 void print_stack(TokenStack *stack) {
@@ -109,11 +147,11 @@ int precedence(int op) {
     }
 }
 
-int shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
+Result shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
+    Result result = {NONE};
     TokenStack operatorStack = {NULL};
     while(algebraicInput->top != NULL) {
         TokenNode *token = pop(algebraicInput);
-        if(token == NULL) return 0;
         if(token->type == VALUE) {
             push_node(postfixOut, token);
         } else if (token->value == L_P){
@@ -122,7 +160,10 @@ int shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
         } else if (token->value == R_P) {
             // Right paren
             while(true) {
-                if(operatorStack.top == NULL) return 0;
+                if(operatorStack.top == NULL) {
+                    result.error = EXTRA_R_P;
+                    return result;
+                }
                 TokenNode *op = pop(&operatorStack);
                 if(op->value == L_P) {
                     free(op);
@@ -147,25 +188,27 @@ int shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
     while(operatorStack.top != NULL) {
         move_top(&operatorStack, postfixOut);
     }
-    return 1;
+    return result;
 }
 
 
-int calc(char *exp) {
+Result calc(char *exp) {
     // Turns algebraic string into token stack in same order
     TokenStack input_stack = {NULL};
-    if(parse_to_stack(&input_stack, exp) == 0) {
-        printf("Invalid input string.\n");
-        return 0;
+    Result result = {NONE};
+
+    result = parse_to_stack(&input_stack, exp);
+    if(result.error != NONE){
+        return result;
     }
     //printf("Input: ");
     //print_stack(&input_stack);
 
     // Use shunting yard to change order to postfix
     TokenStack postfix = {NULL};
-    if(shunting_yard(&postfix, &input_stack) == 0) {
-        printf("Invalid input string.\n");
-        return 0;
+    result = shunting_yard(&postfix, &input_stack);
+    if(result.error != NONE){
+        return result;
     }
     reverse(&postfix);
 
@@ -173,20 +216,24 @@ int calc(char *exp) {
     //print_stack(&postfix);
 
     // Evaluate postfix
-    return eval_postfix(&postfix);
+    result = eval_postfix(&postfix);
+    if(result.error != NONE){
+        return result;
+    }
+    return result;
 }
 
 void test() {
-    assert(calc("-1") == -1);
-    assert(calc("1-1") == 0);
-    assert(calc("1--1") == 2);
-    assert(calc("-5*-1") == 5);
-    assert(calc("1-(-1)") == 2);
-    assert(calc("(1)--1") == 2);
-    assert(calc("1+1*5") == 6);
-    assert(calc("(1+1)*5") == 10);
-    assert(calc("(1+1   )   *5") == 10);
-    assert(calc("((((5))))*(((1))+((2)))") == 15);
+    assert(calc("-1").value == -1);
+    assert(calc("1-1").value == 0);
+    assert(calc("1--1").value == 2);
+    assert(calc("-5*-1").value == 5);
+    assert(calc("1-(-1)").value == 2);
+    assert(calc("(1)--1").value == 2);
+    assert(calc("1+1*5").value == 6);
+    assert(calc("(1+1)*5").value == 10);
+    assert(calc("(1+1   )   *5").value == 10);
+    assert(calc("((((5))))*(((1))+((2)))").value == 15);
 }
 
 void intr() {
@@ -194,12 +241,17 @@ void intr() {
     size_t len = 0;
     printf("calc: ");
     getline(&line, &len, stdin);
-    printf("%i\n", calc(line));
+    Result r = calc(line);
+    if(r.error == NONE) {
+        printf("=%i\n", r.value);
+    } else {
+        print_error(r);
+    }
     free(line);
 }
 
 int main() {
-    test();
+    //test();
     while(true) {
         intr();
     }
