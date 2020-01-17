@@ -34,7 +34,7 @@ TokenNode* pop(TokenStack *stack) {
     return top;
 }
 
-void push_node(TokenStack *stack, TokenNode* node) {
+void push(TokenStack *stack, TokenNode* node) {
     node->next = stack->top;
     stack->top = node;
 }
@@ -48,22 +48,22 @@ TokenNode* make_node(int value, TokenType type) {
 }
 
 void push_operator(TokenStack *stack, Operator op) {
-    push_node(stack, make_node(op, OPERATOR));
+    push(stack, make_node(op, OPERATOR));
 }
 
 void push_value(TokenStack *stack, int value) {
-    push_node(stack, make_node(value, VALUE));
+    push(stack, make_node(value, VALUE));
 }
 
 void move_top(TokenStack *from, TokenStack *to) {
     TokenNode *tnode = pop(from);
-    push_node(to, tnode);
+    push(to, tnode);
 }
 
 void reverse(TokenStack *stack) {
     TokenStack rev = {NULL};
     while(stack->top != NULL) {
-        push_node(&rev, pop(stack));
+        push(&rev, pop(stack));
     }
     stack->top = rev.top;
 }

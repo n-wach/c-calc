@@ -65,7 +65,7 @@ Result eval_postfix(TokenStack *stack) {
     while(stack->top != NULL) {
         TokenNode *n = pop(stack);
         if(n->type == VALUE) {
-            push_node(&temp, n);
+            push(&temp, n);
         } else {
             v1 = pop(&temp);
             if(v1 == NULL || v1->type != VALUE) {
@@ -153,10 +153,10 @@ Result shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
     while(algebraicInput->top != NULL) {
         TokenNode *token = pop(algebraicInput);
         if(token->type == VALUE) {
-            push_node(postfixOut, token);
+            push(postfixOut, token);
         } else if (token->value == L_P){
             // Left paren
-            push_node(&operatorStack, token);
+            push(&operatorStack, token);
         } else if (token->value == R_P) {
             // Right paren
             while(true) {
@@ -169,7 +169,7 @@ Result shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
                     free(op);
                     break;
                 };
-                push_node(postfixOut, op);
+                push(postfixOut, op);
             }
             free(token);
         } else {
@@ -179,10 +179,10 @@ Result shunting_yard(TokenStack *postfixOut, TokenStack *algebraicInput) {
                 if(op->value == L_P) break;
                 int stack_p = precedence(op->value);
                 int new_p = precedence(token->value);
-                if(new_p >= stack_p) break;
+                if(new_p > stack_p) break;
                 move_top(&operatorStack, postfixOut);
             }
-            push_node(&operatorStack, token);
+            push(&operatorStack, token);
         }
     }
     while(operatorStack.top != NULL) {
